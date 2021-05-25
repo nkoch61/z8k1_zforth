@@ -112,4 +112,5 @@ FORTH0BRANCH    macro   dest
 TOFLAG          macro   arg1, cmpop, arg2=#0
         cp      arg1, arg2
         tcc     cmpop, TOS
+        neg     TOS
         endm

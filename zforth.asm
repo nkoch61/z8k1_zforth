@@ -647,7 +647,7 @@ _number:
         ret     uge
 
         clr     DIGIT.HB
-        cp      @BUFPTR, #'-'
+        cpb     @BUFPTR, #'-'
         jr      ne, .plus_check
 
         call    .with_sign
@@ -655,7 +655,7 @@ _number:
         ret
 
 .plus_check:
-        cp      @BUFPTR, #'+'
+        cpb     @BUFPTR, #'+'
         jr      ne, .parse_loop
 
 .with_sign:
@@ -700,7 +700,8 @@ _number:
         cp      DIGIT, var_BASE
         ret     uge
 
-        mult    NUMBER.D, DIGIT
+        mult    NUMBER.D, #10
+        add     NUMBER.W, DIGIT
 
         inc     BUFPTR, #1
         cp      BUFPTR, BUFEND
@@ -960,7 +961,6 @@ _find:
 
 .not_in_dict:                                   ; <word-addr> <len> 0
         FORTH           DROP                    ; <word-addr> <len>
-        FORTH           BREAKPOINT
         FORTH           NUMBER                  ; <number> <chars left>
         FORTH           DUP                     ; <number> <chars left> <chars left>
         FORTH           ZEQU                    ; <number> <chars left> <chars left==0>
