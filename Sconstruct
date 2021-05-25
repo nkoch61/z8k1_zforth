@@ -1,0 +1,11 @@
+asm = Builder(action = 'asl -gnuerrors -werror -i /usr/local/include/asl/ -C -L -s -u -o $TARGET $SOURCE', suffix='.p', src_suffix='.asm')
+hex = Builder(action = 'p2hex $SOURCE $TARGET', suffix='.hex', src_suffix='.p')
+
+env = Environment(BUILDERS = {'Asm': asm, 'Hex': hex})
+
+p=env.Asm('zforth')
+z=env.Hex('zforth')
+
+env.Depends(p, Glob('*.inc'))
+env.Clean(z, [Glob ('*~'), Glob ('*.lst')])
+env.Default(z)
