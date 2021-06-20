@@ -8,25 +8,41 @@
         include zf_regs.inc
 
 
-ZFORTH_VERSION  =       20210525
+ZFORTH_VERSION  =       20210615
+DEBUG           =       0
+DEBUG_TICK      =       0
+DEBUG_EXEC      =       1
 
+
+; **************************************
+; * Cold entry                         *
+; **************************************
 
         org     0
 
 
+cold_init:
+        ld      var_HERE, #FIRST_FREE
+        ld      var_LATEST, #LAST_lfa
+        jr      warm_init
+
+
 ; **************************************
-; * Entry                              *
+; * Warm entry                         *
 ; **************************************
 
-begin:
-        lda     RSP, RETURN_STACK_TOP
-        lda     PSP, PARA_STACK_TOP
+        org     20h
+
+
+warm_init:
+        ld      RSP, #RETURN_STACK_TOP
+        ld      PSP, #PARA_STACK_TOP
         push    @PSP, #0
         ld      var_S0, PSP
         ld      var_STATE, #IMMEDIATE_MODE
-        lda     r0, keybuf
-        ld      keybufptr, r0
-        ld      keybuftop, r0
+        ld      keybufptr, #keybuf
+        ld      keybuftop, #keybuf
+        ld      var_DPL, #-1
 
         clr     TOS
         lda     IP, COLD
@@ -68,15 +84,39 @@ dovar:
         NEXT
 
 ; **************************************
+
+dodoes;
+        push    @PSP, TOS
+        ld      TOS, W          ; PFA
+        ex      @RSP, IP
+        NEXT
+
+; **************************************
 ; Forth words begin here               *
 ; **************************************
 
 LFA     :=      0
 
 ; **************************************
+; **************************************
 
-        DEFCODE '<BREAKPOINT>', breakpoint
+        DEFVAR  "STATE", state, 0
+        DEFVAR  "HERE", here, FIRST_FREE
+        DEFVAR  "LATEST", latest, LAST_lfa
+        DEFVAR  "S0", s0, PARA_STACK_TOP
+	DEFVAR  "BASE", base, 10
+	DEFVAR  "DPL", dpl, -1
+
+; **************************************
+
+        DEFCODE '<BREAK>', breakpoint
         syscall_BREAKPOINT
+        NEXT
+
+; **************************************
+
+        DEFCODE '<TRACE>', trace
+        syscall_TRACE   IP
         NEXT
 
 ; **************************************
@@ -102,32 +142,40 @@ LFA     :=      0
 
 ; **************************************
 
-        ; n1 n2 n3 -- n1 n2 n3 n2
+        ; n1 n2 -- n1 n2 n1
         DEFCODE 'OVER', over
         push    @PSP, TOS
-        ld      TOS, PSP(#4)
+        ld      TOS, PSP(#2)
         NEXT
 
 ; **************************************
+
+n1      :=      r0
+n2      :=      r1
+n3      :=      TOS
 
         ; n1 n2 n3 -- n2 n3 n1
         DEFCODE 'ROT', rot
-        pop     TMP, @PSP       ; n2
-        pop     TMP2, @PSP      ; n1
-        push    @PSP, TMP       ; n2
-        push    @PSP, TOS       ; n3
-        ld      TOS, TMP2       ; n1
+        pop     n2, @PSP        ; n2
+        pop     n1, @PSP        ; n1
+        push    @PSP, n2        ; n2
+        push    @PSP, n3        ; n3
+        ld      TOS, n1         ; n1
         NEXT
 
 ; **************************************
 
+n1      :=      r0
+n2      :=      r1
+n3      :=      TOS
+
         ; n1 n2 n3 -- n3 n1 n2
         DEFCODE '-ROT', nrot
-        pop     TMP, @PSP       ; n2
-        pop     TMP2, @PSP      ; n1
-        push    @PSP, TOS       ; n3
-        push    @PSP, TMP2      ; n1
-        ld      TOS, TMP        ; n2
+        pop     n2, @PSP        ; n2
+        pop     n1, @PSP        ; n1
+        push    @PSP, n3        ; n3
+        push    @PSP, n1        ; n1
+        ld      TOS, n2         ; n2
         NEXT
 
 ; **************************************
@@ -373,6 +421,15 @@ LFA     :=      0
 
 ; **************************************
 
+        DEFCODE '2LIT', twolit
+        push    @PSP, TOS
+        pop     TOS, @IP
+        pop     TMP, @IP
+        push    @PSP, TMP
+        NEXT
+
+; **************************************
+
         ; n a --
         DEFCODE '!', store
         pop     TMP, @PSP       ; n
@@ -413,6 +470,7 @@ LFA     :=      0
         DEFCODE 'C!', storebyte
         pop     TMP, @PSP       ; n
         ld      @TOS, TMP.LB
+        pop     TOS, @PSP
 	NEXT
 
 ; **************************************
@@ -437,18 +495,14 @@ LFA     :=      0
         DEFCODE 'CMOVE', cmove
         pop     TMP, @PSP       ; dst
         pop     TMP2, @PSP      ; src
+        test    TOS
+        jr      z, .nocopy
+
         ldirb   @TMP, @TMP2, TOS
+
+.nocopy:
         pop     TOS, @PSP
 	NEXT
-
-; **************************************
-; **************************************
-
-        DEFVAR  "STATE", state, 0
-        DEFVAR  "HERE", here, FIRST_FREE
-        DEFVAR  "LATEST", latest, LAST_lfa
-        DEFVAR  "S0", s0, PARA_STACK_TOP
-	DEFVAR  "BASE", base, 10
 
 ; **************************************
 ; **************************************
@@ -500,18 +554,258 @@ LFA     :=      0
 
 ; **************************************
 
-;DEFCODE "DSP@", dspfetch
-;       ld      TMP, PSP
-;       push    @PSP, TOS
-;       ld      TOS, TMP
-;       NEXT
+        DEFCODE "DSP@", dspfetch
+        push    @PSP, TOS
+        ld      TOS, PSP
+        NEXT
 
 ; **************************************
 
-;       DEFCODE "DSP!", dspstore
-;       lda     PSP, TOS
-;       pop     TOS, @PSP
-;       NEXT
+        DEFCODE "DSP!", dspstore
+        ld      PSP, TOS
+        pop     TOS, @PSP
+        NEXT
+
+; **************************************
+
+PTR     :=      r3
+N       :=      r1
+RES     :=      r0
+
+IPTR    :=      r2
+
+        ; addr n -- n
+	DEFCODE "ACCEPT", accept
+        pop     PTR, @PSP
+        ld      N, TOS
+        call    _accept
+        ld      TOS, RES
+	NEXT
+
+_accept:
+        ld      IPTR, initbufptr
+        cp      IPTR, #init_forth_end
+        jr      uge, .terminal
+
+        clr     RES
+        test    N
+        ret     z
+
+.loop:
+        cpb     @IPTR, #'\n'
+        jr      eq, .eol
+
+        test    do_echo_init
+        jr      z, .no_echo
+
+        sub     RSP, #4*2
+        ldm     @RSP, r0, #4
+        ld      rl0, @IPTR
+        ldb     emitbuf+0, rl0
+        syscall_TERMOUT emitbuf, #1
+        ldm     r0, @RSP, #4
+        add     RSP, #4*2
+
+.no_echo:
+        inc     RES
+        ldib    @PTR, @IPTR, N
+        jr      ov, .done
+
+        cp      IPTR, #init_forth_end
+        jr      ult, .loop
+
+        jr      .done
+
+.eol:
+        inc     IPTR
+
+.done:
+        ld      initbufptr, IPTR
+        ldb     emitbuf+0, #'\r'
+        ldb     emitbuf+1, #'\n'
+
+        push    @RSP, RES
+        syscall_TERMOUT emitbuf, #2
+        pop     RES, @RSP
+        ret
+
+.terminal:
+        sc      #sys_termreadline
+        ret
+
+
+	DEFCODE "-ECHO-INIT", echo_init_off
+        ld      do_echo_init, #0
+	NEXT
+
+
+	DEFCODE "+ECHO-INIT", echo_init_on
+        ld      do_echo_init, #1
+	NEXT
+
+
+; **************************************
+
+  if DEBUG_EXEC
+
+TMPD    :=      r6
+TMPD.LB :=      rh7
+TMPD.HB :=      rh6
+TMPC    :=      r5
+TMPC.LB :=      rl5
+TMPC.HB :=      rh5
+TMPB    :=      r4
+TMPB.LB :=      rl4
+TMPB.HB :=      rh4
+IPTR    :=      r4
+PTR     :=      r3
+N       :=      r1
+N.lb    :=      rl1
+TMPA    :=      r0
+TMPA.LB :=      rl0
+TMPA.HB :=      rh0
+RES     :=      r0
+
+
+emit_inline:
+        pop     IPTR, @r15
+
+.loop:
+        ld      TMP.LB, @IPTR
+        ldib    @PTR, @IPTR, N
+        test    TMP.LB
+        jr      nz, .loop
+
+        INC     iptr
+        AND     IPTR, #0FFFEh
+        jp      @IPTR
+
+
+emit_tos:
+        ld      TMPA, TOS
+
+
+emit_tmpa:
+        ld      TMPC, #4
+
+.loop:
+        ld      TMPB, TMPA
+        sll     TMPA, #4
+        srl     TMPB, #12
+        and     TMPB.LB, #0Fh
+        add     TMPB.LB, #'0'
+        cp      TMPB.LB, #'9'
+        jr      ule, .out
+
+        add     TMPB.LB, #'A'-'9'-1
+
+.out:
+        ld      @PTR, TMPB.LB
+        inc     PTR
+        djnz    TMPC, .loop
+
+        ret
+
+
+EXEC_TRACE_OFF          equ     0
+EXEC_TRACE_ON           equ     1
+EXEC_TRACE_DEFER_ON     equ     -1
+
+
+exec_trace:     ; @xt in W, xxx_code in X
+        cp      X, #code_exec_trace_on
+        ret     eq
+
+        test    do_exec_trace
+        ret     z
+
+        ld      TMPA, #EXEC_TRACE_ON
+        ex      TMPA, do_exec_trace
+        cp      TMPA, #EXEC_TRACE_ON
+        ret     ne
+
+        ld      PTR, #emitbuf
+
+        call    emit_inline
+        db      " \e[96m SP:", 0
+        align   2
+
+        ld      TMPA, PSP
+        call    emit_tmpa
+
+        call    emit_inline
+        db      " NOS:", 0
+        align   2
+
+        ld      TMPA, @PSP
+        call    emit_tmpa
+
+        call    emit_inline
+        db      " TOS:", 0
+        align   2
+
+        call    emit_tos
+
+        call    emit_inline
+        db      " HERE:", 0
+        align   2
+
+        ld      TMPA, var_HERE
+        call    emit_tmpa
+
+        call    emit_inline
+        db      " LAST:", 0
+        align   2
+
+        ld      TMPA, var_LATEST
+        call    emit_tmpa
+
+        call    emit_inline
+        db      " ", 0
+        align   2
+
+        ld      IPTR, W(#-4)
+        ld      N.lb, IPTR(#2)
+        and     N, #F_LENMASK
+        inc     IPTR, #3
+        ldirb   @PTR, @IPTR, N
+
+        call    emit_inline
+        db      "\e[97m\r\n", 0
+        align   2
+
+        ld      N, PTR
+        ld      PTR, #emitbuf
+        sub     N, PTR
+        sc      sys_TERMOUT
+
+        ret
+
+
+no_exec_trace:
+        ret
+
+
+	DEFCODE "+EXEC-TRACE", set_exec_trace_handler
+        ld      exec_trace_handler, #exec_trace
+	NEXT
+
+
+	DEFCODE "-EXEC-TRACE", clr_exec_trace_handler
+        ld      exec_trace_handler, #no_exec_trace
+	NEXT
+
+
+	DEFCODE "EXEC-TRACE[", exec_trace_on
+        ld      do_exec_trace, #EXEC_TRACE_DEFER_ON
+	NEXT
+
+
+	DEFCODE "]EXEC-TRACE", exec_trace_off
+        ld      do_exec_trace, #EXEC_TRACE_OFF
+	NEXT
+
+  endif
 
 ; **************************************
 
@@ -528,11 +822,22 @@ _key:   ; -> TOS.LB
         jr      uge, .read_line
 
         ld      TOS.LB, @TMP
-        inc     keybufptr, #1
+        inc     keybufptr
 	ret
 
 .read_line:
-        syscall_TERMREADLINE    keybuf, #keybuflen-1
+        cp      var_STATE, #IMMEDIATE_MODE
+        jr      ne, .no_prompt
+
+        ldb     emitbuf+0, #'O'
+        ldb     emitbuf+1, #'K'
+        ldb     emitbuf+2, #' '
+        syscall_TERMOUT emitbuf, #3
+
+.no_prompt:
+        ld      PTR, #keybuf
+        ld      N, #keybuflen-1
+        call    _accept
         test    r0
         jr      pl, .line_ok
 
@@ -541,9 +846,9 @@ _key:   ; -> TOS.LB
 
 .line_ok:
         ld      TMP, r0
-        lda     TMP, keybuf(TMP)
-        ld      @TMP, #'\n'
-        inc     TMP, #1
+        add     TMP, #keybuf
+        ldb     @TMP, #'\n'
+        inc     TMP
         ld      keybuftop, TMP
         ld      keybufptr, #keybuf
         jr      _key
@@ -555,8 +860,8 @@ _key:   ; -> TOS.LB
         cp      TOS.LB, #'\n'
         jr      ne, .emit1
 
-        ld      emitbuf, #'\r'
-        ld      emitbuf+1, #'\n'
+        ldb     emitbuf+0, #'\r'
+        ldb     emitbuf+1, #'\n'
 
         syscall_TERMOUT emitbuf, #2
         jr      .done
@@ -575,6 +880,18 @@ _key:   ; -> TOS.LB
 	DEFCODE "WORD", word
         push    @PSP, TOS
         call    _word
+
+  if DEBUG
+        ldb     emitbuf+0, #'"'
+        syscall_TERMOUT emitbuf, #1
+        ld      TOS, wordbufptr
+        sub     TOS, #wordbuf
+        syscall_TERMOUT wordbuf, TOS
+        ldb     emitbuf+1, #'\r'
+        ldb     emitbuf+2, #'\n'
+        syscall_TERMOUT emitbuf, #3
+  endif
+
         push    @PSP, #wordbuf
         ld      TOS, wordbufptr
         sub     TOS, #wordbuf
@@ -594,7 +911,7 @@ _word:
 .read_nws:
         ld      TMP, wordbufptr
         ld      @TMP, TOS.LB
-        inc     wordbufptr, #1
+        inc     wordbufptr
         cp      wordbufptr, #wordbufend
         jr      uge, .skip_nws
 
@@ -616,17 +933,21 @@ _word:
         cp      TOS.LB, #'\n'
         jr      ne, .skip_comment
 
-        jr      _word
+        jr      .skip_ws
 
 ; **************************************
 
-NUMBER.D        :=      rr0
-NUMBER.W        :=      r1
-DIGIT.LB        :=      rl2
-DIGIT.HB        :=      rh2
-DIGIT           :=      r2
-BUFPTR          :=      r3
-BUFEND          :=      r4
+NUMBER.Q        :=      rq0
+NUMBER.D        :=      rr2
+NUMBER.HW       :=      r2
+NUMBER.W        :=      r3
+DIGIT.D         :=      rr4
+DIGIT.HW        :=      r4
+DIGIT.W         :=      r5
+DIGIT.LB        :=      rl5
+DIGIT.HB        :=      rh5
+BUFPTR          :=      r8
+BUFEND          :=      r9
 
         ; buf len - number left
 	DEFCODE "NUMBER", number
@@ -637,28 +958,33 @@ BUFEND          :=      r4
         push    @PSP, NUMBER.W  ; number
         ld      TOS, BUFEND
         sub     TOS, BUFPTR     ; left
+        cp      var_DPL, #-1
+        jr      eq, .next
+
+        push    @PSP, NUMBER.HW
+
+.next:
 	NEXT
 
 
 _number:
         ld      NUMBER.D, #0
+        ld      var_DPL, #-1
 
         cp      BUFPTR, BUFEND
         ret     uge
 
-        clr     DIGIT.HB
+        ld      DIGIT.D, #0
         cpb     @BUFPTR, #'-'
-        jr      ne, .plus_check
-
-        call    .with_sign
-        neg     NUMBER.W
-        ret
-
-.plus_check:
-        cpb     @BUFPTR, #'+'
         jr      ne, .parse_loop
 
-.with_sign:
+        call    .skip_sign
+        ld      DIGIT.D, #0
+        sub     DIGIT.D, NUMBER.D
+        ld      NUMBER.D, DIGIT.D
+        ret
+
+.skip_sign:
         inc     BUFPTR, #1
         cp      BUFPTR, BUFEND
         jr      ult, .parse_loop
@@ -668,6 +994,13 @@ _number:
 
 .parse_loop:
         ld      DIGIT.LB, @BUFPTR
+        cp      DIGIT.LB, #'.'
+        jr      ne, .check_digits
+
+        ld      var_DPL, #0
+
+
+.check_digits:
         cp      DIGIT.LB, #'0'
         ret     ult
 
@@ -697,13 +1030,23 @@ _number:
         sub     DIGIT.LB, #'a'-10
 
 .legal_char:
-        cp      DIGIT, var_BASE
+        cp      DIGIT.W, var_BASE
         ret     uge
 
-        mult    NUMBER.D, #10
-        add     NUMBER.W, DIGIT
+        push    @PSP, DIGIT.D
+        ld      DIGIT.W, var_BASE
+        clr     DIGIT.HW
+        mult    NUMBER.Q, DIGIT.D
+        pop     DIGIT.D, @PSP
+        add     NUMBER.D, DIGIT.D
 
-        inc     BUFPTR, #1
+        cp      var_DPL, #-1
+        jr      eq, .no_inc
+
+        inc     var_DPL
+
+.no_inc:
+        inc     BUFPTR
         cp      BUFPTR, BUFEND
         jr      ult, .parse_loop
 
@@ -743,8 +1086,6 @@ _find:
         cpsirb  @WORDPTR, @BUFPTR, WORDLEN, ne
         jr      z, .next
 
-        jr      nov, .loop
-
         ret
 
 .next:
@@ -775,7 +1116,7 @@ _find:
 ; **************************************
 
         ; LFA -- DFA
-	DEFCODE ">DFA", topfa
+	DEFCODE ">DFA", todfa
         ld      TMP.LB, TOS(#2)
         and     TMP, #F_LENMASK
         add     TOS, TMP
@@ -785,22 +1126,36 @@ _find:
 
 ; **************************************
 
+BASE    :=      TMP
+PTR     :=      TMP2
+WORD    :=      TMP3
+
         ; address length --
 	DEFCODE "CREATE", create
-        ld      TMP, var_HERE
-        LD      TMP2, var_LATEST
-        ld      @TMP, TMP2      ; LFA
-        lda     TMP2, TMP(#2)
-        ld      @TMP2, TOS.LB
-        inc     TMP2, #1
-        pop     TMP3, @PSP
-        ldirb   @TMP2, @TMP3, TOS
-        inc     @TMP2
-        and     TMP2, #0FFFEh
-        ld      @TMP2, TMP      ; backlink LFA
-        inc     TMP2, #2
-        ex      var_HERE, TMP2
-        ld      var_LATEST, TMP2
+        ld      BASE, var_HERE
+        inc     BASE
+        and     BASE, #0FFFEh
+        LD      PTR, var_LATEST
+        ld      @BASE, PTR      ; LFA
+        lda     PTR, BASE(#2)
+        ld      @PTR, TOS.LB
+        inc     PTR
+        pop     WORD, @PSP
+        test    TOS.LB
+        jr      z, .nocopy
+
+        test    WORD
+        jr      z, .nocopy
+
+        ldirb   @PTR, @WORD, TOS
+
+.nocopy:
+        inc     PTR
+        and     PTR, #0FFFEh
+        ld      @PTR, BASE      ; backlink LFA
+        inc     PTR, #2         ; CFA
+        ld      var_HERE, PTR
+        ld      var_LATEST, BASE
         pop     TOS, @PSP
 	NEXT
 
@@ -816,7 +1171,7 @@ _find:
 
 ; **************************************
 
-        DEFCODE "[", lbrac
+        DEFCODE "[", lbrac, F_IMMED
         ld      var_STATE, #IMMEDIATE_MODE
         NEXT
 
@@ -831,8 +1186,7 @@ _find:
         DEFWORD ":", colon
         FORTH           WORD
         FORTH           CREATE
-        FORTHLIT        DOCOL
-        FORTH           COMMA
+        FORTH           __DOCOL, COMMA
         FORTH           LATEST, FETCH, HIDDEN
 	FORTH           RBRAC
         FORTH           EXIT
@@ -873,13 +1227,30 @@ _find:
 
 ; **************************************
 
-        DEFWORD "'", tick
+        DEFWORD "'", tick, F_IMMED
+        FORTH           STATE, FETCH
+        FORTH0BRANCH    .immediate
+
+.compiling:
+  if DEBUG_TICK
+  FORTHLITSTRING 'tick compile\r\n'
+  FORTH TELL
+  endif
+        FORTHLITF       LIT
+        FORTH           COMMA
+        FORTHBRANCH     .exit
+
+.immediate:
+  if DEBUG_TICK
+  FORTHLITSTRING 'tick immediate\r\n'
+  FORTH TELL
+  endif
 	FORTH           WORD, FIND, QDUP
-        FORTH0BRANCH    .not_found
+        FORTH0BRANCH    .exit
 
         FORTH           TOCFA
 
-.not_found:
+.exit:
 	FORTH           EXIT
 
 ; **************************************
@@ -907,7 +1278,7 @@ _find:
         inc     IP, #2
         push    @PSP, IP        ; address
         add     IP, TOS
-        inc     IP, #1
+        inc     IP
         and     IP, #0FFFEh
 	NEXT
 
@@ -925,6 +1296,10 @@ _find:
 
 	DEFWORD "QUIT", quit
 .forever:
+  if DEBUG
+  FORTHLITSTRING 'QUIT:\r\n'
+  FORTH TELL
+  endif
 	FORTH           RZ, RSPSTORE
 	FORTH           INTERPRET
 	FORTHBRANCH     .forever
@@ -932,11 +1307,16 @@ _find:
 ; **************************************
 
         DEFWORD "INTERPRET", interpret
+.forever:
+  if DEBUG
+  FORTHLITSTRING 'INTERPRET:\r\n'
+  FORTH TELL
+  endif
         FORTH           WORD                    ; <word-addr> <len>
         FORTH           TWODUP                  ; <word-addr> <len> <word-addr <len>>
         FORTH           FIND                    ; <word-addr> <len> <dict-addr or 0>
-        FORTH           DUP                     ; <word-addr> <len> <dict-addr or 0> <dict-addr or 0>
-        FORTH0BRANCH    .not_in_dict            ; <word-addr> <len> <dict-addr or 0>
+        FORTH           QDUP                    ; <word-addr> <len> <dict-addr or 0> <dict-addr or 0>?
+        FORTH0BRANCH    .not_in_dict            ; <word-addr> <len>
 
         FORTH           SWAP                    ; <word-addr> <dict-addr> <len>
         FORTH           DROP                    ; <word-addr> <dict-addr>
@@ -949,59 +1329,96 @@ _find:
         FORTH           INCR2, FETCHBYTE, __F_IMMED, AND, ZEQU
         FORTH0BRANCH    .immediate              ; <dict-addr>
 
-.compile:
-        FORTH           BREAKPOINT
+.compile:                                       ; <dict-addr>
         FORTH           TOCFA, COMMA
-	FORTH           EXIT
+  if DEBUG
+  FORTHLITSTRING 'word compiled\r\n'
+  FORTH TELL
+  endif
+        FORTHBRANCH     .exit
 
-.immediate:
-        FORTH           BREAKPOINT
-        FORTH           TOCFA, EXECUTE
-	FORTH           EXIT
+.immediate:                                     ; <dict-addr>
+        FORTH           TOCFA
+  if DEBUG_EXEC
+        FORTH           EXEC_TRACE_ON
+  endif
+        FORTH           EXECUTE
+  if DEBUG_EXEC
+        FORTH           EXEC_TRACE_OFF
+  endif
+  if DEBUG
+  FORTHLITSTRING 'word executed\r\n'
+  FORTH TELL
+  endif
+        FORTHBRANCH     .exit
 
-.not_in_dict:                                   ; <word-addr> <len> 0
-        FORTH           DROP                    ; <word-addr> <len>
+.not_in_dict:                                   ; <word-addr> <len>
         FORTH           NUMBER                  ; <number> <chars left>
-        FORTH           DUP                     ; <number> <chars left> <chars left>
-        FORTH           ZEQU                    ; <number> <chars left> <chars left==0>
-        FORTH0BRANCH    .parse_error            ; <number> <chars left>
+        FORTH           ZEQU                    ; <number> <chars left==0>
+        FORTH0BRANCH    .parse_error            ; <number>
 
-        FORTH           DROP                    ; <number>
         FORTH           STATE, FETCH            ; <number> STATE
-        FORTH0BRANCH    .number                 ; <number>
+        FORTH0BRANCH    .exit
 
-.compile_lit:
-        FORTH           TICK, LIT, COMMA
+.compile_number:
+        FORTH           DPL, FETCH, ZGE
+        FORTH0BRANCH    .compile_single
 
-.number:
-        FORTH           BREAKPOINT
-        FORTH           EXIT
+.compile_double:
+        FORTHLITF       TWOLIT                  ; <number> <cfa_TWOLIT>
+        FORTH           COMMA, COMMA, COMMA
+  if DEBUG
+  FORTHLITSTRING 'double number compiled\r\n'
+  FORTH TELL
+  endif
+        FORTHBRANCH     .exit
 
-.parse_error:
-        FORTH           BREAKPOINT
-        FORTHLITSTRING  'PARSE ERROR:\r\n'
+.compile_single:
+        FORTHLITF       LIT                     ; <number> <cfa_LIT>
+        FORTH           COMMA, COMMA
+  if DEBUG
+  FORTHLITSTRING 'number compiled\r\n'
+  FORTH TELL
+  endif
+        FORTHBRANCH     .exit
+
+.parse_error:                                   ; <number>
+        FORTH           DROP
+        FORTHLITSTRING  '\e[91m***PARSE ERROR:\r\n'
         FORTH           TELL
-        FORTHLIT        keybufptr               ; keybufptr
-        FORTH           DUP                     ; keybufptr keybufptr
-        FORTHLIT        keybuf                  ; keybufptr keybufptr keybuf
-        FORTH           SUB                     ; keybufptr keybufptr-keybuf
-        FORTHLIT        40                      ; keybufptr keybufptr-keybuf 40
-        FORTH           MAX                     ; keybufptr n=max(keybufptr-keybuf, 40)
-        FORTH           DUP                     ; keybufptr n n
-        FORTH           ROT                     ; n keybufptr n
+        FORTHLIT        keybufptr
+        FORTH           FETCH                   ; keybufptr
+        FORTHLIT        keybuf                  ; keybufptr keybuf
+        FORTH           SUB                     ; keybufptr-keybuf
+        FORTHLIT        40                      ; keybufptr-keybuf 40
+        FORTH           MIN                     ; n=min(keybufptr-keybuf, 40)
+        FORTH           DUP                     ; n n
+        FORTHLIT        keybufptr
+        FORTH           FETCH                   ; n n keybufptr
+        FORTH           SWAP                    ; n keybufptr n
         FORTH           SUB                     ; n keybufptr-n
         FORTH           SWAP                    ; keybufptr-n n
         FORTH           TELL
-        FORTHLITSTRING  '\r\n'
+        FORTHLITSTRING  '\e[97m\r\n'
         FORTH           TELL
+        FORTHLIT        IMMEDIATE_MODE
+        FORTH           STATE, STORE
+        FORTHLIT        keybuf
+        FORTHLIT        keybuftop
+        FORTH           STORE
+        FORTHLIT        init_forth_end
+        FORTHLIT        initbufptr
+        FORTH           STORE
+
+.exit:
 	FORTH           EXIT
 
 ; **************************************
 ; **************************************
 
-	DEFCODE "CHAR",char
-	call    _word
+	DEFCODE "CHAR", char
         push    @PSP, TOS
+	call    _word
         clr     TOS
         ld      TOS.LB, wordbuf
 	NEXT
@@ -1028,7 +1445,7 @@ _find:
         cp      TOS, TMP
         jr      ge, .done
 
-        ex      TMP, TOS
+        ld      TOS, TMP
 
 .done:
 	NEXT
@@ -1041,10 +1458,28 @@ _find:
         cp      TOS, TMP
         jr      le, .done
 
-        ex      TMP, TOS
+        ld      TOS, TMP
 
 .done:
 	NEXT
+
+; **************************************
+
+	DEFWORD "(;CODE)", semi_code
+        FORTH           FROMR
+        FORTH           LATEST, FETCH, TOCFA, STORE
+	FORTH           EXIT
+
+; **************************************
+
+	DEFWORD "DOES>", does, F_IMMED
+        FORTHLITF       SEMI_CODE
+        FORTH           COMMA
+        FORTHLIT        5F00h   ; call
+        FORTH           COMMA
+        FORTHLIT        dodoes
+        FORTH           COMMA   ; call/jp dodoes
+	FORTH           EXIT
 
 ; **************************************
 ; **************************************
@@ -1056,17 +1491,37 @@ keybuflen               =       keybufend-keybuf
 keybufptr               dw      keybuf
 keybuftop               dw      keybuf
 
+initbufptr              dw      init_forth
+
 wordbuf                 db      keybuflen dup(?)
 wordbufend              =       $
 wordbuflen              =       wordbufend-wordbuf
         align   2
 wordbufptr              dw      wordbuf
 
-emitbuf                 db      2 dup (?)
+emitbuf                 db      128 dup (?)
         align   2
+
+  if DEBUG_EXEC
+do_exec_trace           dw      0
+exec_trace_handler      dw      exec_trace
+  endif
+do_echo_init            dw      1
 
 LAST_lfa                =       LFA
 FIRST_FREE              =       $
+
+; **************************************
+; **************************************
+
+        rorg            8192
+
+init_forth:
+        binclude        zforth.f
+init_forth_end:
+
+; **************************************
+; **************************************
 
 
         end

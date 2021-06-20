@@ -1,18 +1,9 @@
-\ -*- text -*-
 \	A sometimes minimal FORTH compiler and tutorial for Linux / i386 systems. -*- asm -*-
 \	By Richard W.M. Jones <rich@annexia.org> http://annexia.org/forth
 \	This is PUBLIC DOMAIN (see public domain release statement below).
-\	$Id: zforth.f,v 6b3f6290c6da 2021/05/22 14:39:31 nkoch $
-\
-\	The first part of this tutorial is in jonesforth.S.  Get if from http://annexia.org/forth
-\
-\	PUBLIC DOMAIN ----------------------------------------------------------------------
-\
-\	I, the copyright holder of this work, hereby release it into the public domain. This applies worldwide.
-\
-\	In case this is not legally possible, I grant any entity the right to use this work for any purpose,
-\	without any conditions, unless such conditions are required by law.
-\
+
+-EXEC-TRACE
+-ECHO-INIT
 
 : / /MOD SWAP DROP ;
 : MOD /MOD DROP ;
@@ -32,17 +23,11 @@
 
 \ LITERAL takes whatever is on the stack and compiles LIT <foo>
 : LITERAL IMMEDIATE
-	' LIT ,		\ compile LIT
-	,		\ compile the literal itself (from the stack)
+	' LIT ,
+	,
 	;
 
-: ':'
-	[		\ go into immediate mode (temporarily)
-	CHAR :		\ push the number 58 (ASCII code of colon) on the parameter stack
-	]		\ go back to compile mode
-	LITERAL		\ compile LIT 58 as the definition of ':' word
-;
-
+: ':' [ CHAR : ] LITERAL ;
 : ';' [ CHAR ; ] LITERAL ;
 : '(' [ CHAR ( ] LITERAL ;
 : ')' [ CHAR ) ] LITERAL ;
@@ -53,108 +38,109 @@
 : '.' [ CHAR . ] LITERAL ;
 
 : [COMPILE] IMMEDIATE
-	WORD		\ get the next word
-	FIND		\ find it in the dictionary
-	>CFA		\ get its codeword
-	,		\ and compile that
+	WORD
+	FIND
+	>CFA
+	,
 ;
 
 : RECURSE IMMEDIATE
-	LATEST @	\ LATEST points to the word being compiled at the moment
-	>CFA		\ get the codeword
-	,		\ compile it
+	LATEST @
+	>CFA
+	,
 ;
 
 : IF IMMEDIATE
-	' 0BRANCH ,	\ compile 0BRANCH
-	HERE @		\ save location of the offset on the stack
-	0 ,		\ compile a dummy offset
+	' 0BRANCH ,
+	HERE @
+	0 ,
 ;
 
 : THEN IMMEDIATE
 	DUP
-	HERE @ SWAP -	\ calculate the offset from the address saved on the stack
-	SWAP !		\ store the offset in the back-filled location
+	HERE @ SWAP -
+	SWAP !
 ;
 
 : ELSE IMMEDIATE
-	' BRANCH ,	\ definite branch to just over the false-part
-	HERE @		\ save location of the offset on the stack
-	0 ,		\ compile a dummy offset
-	SWAP		\ now back-fill the original (IF) offset
-	DUP		\ same as for THEN word above
+	' BRANCH ,
+	HERE @
+	0 ,
+	SWAP
+	DUP
 	HERE @ SWAP -
 	SWAP !
 ;
 
 : BEGIN IMMEDIATE
-	HERE @		\ save location on the stack
+	HERE @
 ;
 
 : UNTIL IMMEDIATE
-	' 0BRANCH ,	\ compile 0BRANCH
-	HERE @ -	\ calculate the offset from the address saved on the stack
-	,		\ compile the offset here
+	' 0BRANCH ,
+	HERE @ -
+	,
 ;
 
 : AGAIN IMMEDIATE
-	' BRANCH ,	\ compile BRANCH
-	HERE @ -	\ calculate the offset back
-	,		\ compile the offset here
+	' BRANCH ,
+	HERE @ -
+	,
 ;
 
 : WHILE IMMEDIATE
-	' 0BRANCH ,	\ compile 0BRANCH
-	HERE @		\ save location of the offset2 on the stack
-	0 ,		\ compile a dummy offset2
+	' 0BRANCH ,
+	HERE @
+	0 ,
 ;
 
 : REPEAT IMMEDIATE
-	' BRANCH ,	\ compile BRANCH
-	SWAP		\ get the original offset (from BEGIN)
-	HERE @ - ,	\ and compile it after BRANCH
+	' BRANCH ,
+	SWAP
+	HERE @ - ,
 	DUP
-	HERE @ SWAP -	\ calculate the offset2
-	SWAP !		\ and back-fill it in the original location
+	HERE @ SWAP -
+	SWAP !
 ;
 
 : UNLESS IMMEDIATE
-	' NOT ,		\ compile NOT (to reverse the test)
-	[COMPILE] IF	\ continue by calling the normal IF
+	' NOT ,
+	[COMPILE] IF
 ;
 
 : ( IMMEDIATE
-	1		\ allowed nested parens by keeping track of depth
+	1
 	BEGIN
-		KEY		\ read next character
-		DUP '(' = IF	\ open paren?
-			DROP		\ drop the open paren
-			1+		\ depth increases
+		KEY
+		DUP '(' = IF
+			DROP
+			1+
 		ELSE
-			')' = IF	\ close paren?
-				1-		\ depth decreases
+			')' = IF
+				1-
 			THEN
 		THEN
-	DUP 0= UNTIL		\ continue until we reach matching close paren, depth 0
-	DROP		\ drop the depth counter
+	DUP 0= UNTIL
+	DROP
 ;
 
-( Some more complicated stack examples, showing the stack notation. )
+: CELLS ( n -- n ) 2 * ;
+
 : NIP ( x y -- y ) SWAP DROP ;
 : TUCK ( x y -- y x y ) SWAP OVER ;
 : PICK ( x_u ... x_1 x_0 u -- x_u ... x_1 x_0 x_u )
-	1+		( add one because of 'u' on the stack )
-	CELLS *		( multiply by the word size )
-	DSP@ +		( add to the stack pointer )
-	@    		( and fetch )
+        1 +
+	CELLS
+	DSP@ +
+	@
 ;
 
 : SPACES	( n -- )
 	BEGIN
-		DUP 0>		( while n > 0 )
+		DUP 0>
 	WHILE
-		SPACE		( print a space )
-		1-		( until we count down to 0 )
+		SPACE
+		1-
 	REPEAT
 	DROP
 ;
@@ -179,8 +165,7 @@
 	EMIT
 ;
 
-: .S		( -- )          \ ***TBD ***
-        DUP     ( TOS in register! )
+: .S		( -- )
 	DSP@		( get current stack pointer )
 	BEGIN
 		DUP S0 @ <
@@ -190,7 +175,6 @@
 		1 CELLS +	( move up )
 	REPEAT
 	DROP
-        DROP    ( TOS in register! )
 ;
 
 : UWIDTH	( u -- width )
@@ -340,8 +324,6 @@
 	HERE @ SWAP	( here n )
 	HERE +!		( adds n to HERE, after this the old value of HERE is still on the stack )
 ;
-
-: CELLS ( n -- n ) 2 * ;
 
 : VARIABLE
 	WORD CREATE	( make the dictionary entry (the name follows VARIABLE) )
@@ -612,36 +594,33 @@
 ;
 
 : CATCH		( xt -- exn? )
-	DSP@ 1 CELLS + >R	( save parameter stack pointer (+2 because of xt) on the return stack )
-	' EXCEPTION-MARKER 1 CELLS +	( push the address of the RDROP inside EXCEPTION-MARKER ... )
-	>R			( ... on to the return stack so it acts like a return address )
-	EXECUTE			( execute the nested function )
+	DSP@ 2+ >R
+	' EXCEPTION-MARKER 2+
+	>R
+	EXECUTE
 ;
 
 : THROW		( n -- )
-	?DUP IF			( only act if the exception code <> 0 )
-		RSP@ 			( get return stack pointer )
+	?DUP IF
+		RSP@
 		BEGIN
-			DUP R0 1 CELLS - <		( RSP < R0 )
+			DUP R0 2- <
 		WHILE
-			DUP @			( get the return stack entry )
-			' EXCEPTION-MARKER 1 CELLS + = IF	( found the EXCEPTION-MARKER on the return stack )
-				1 CELLS +		( skip the EXCEPTION-MARKER on the return stack )
-				RSP!			( restore the return stack pointer )
+			DUP @
+			' EXCEPTION-MARKER 2+ = IF
+				2+
+				RSP!
 
-				( Restore the parameter stack. )
-				DUP DUP DUP		( reserve some working space so the stack for this word
-							  doesn't coincide with the part of the stack being restored )
-				R>			( get the saved parameter stack pointer | n dsp )
-				1 CELLS -		( reserve space on the stack to store n )
-				SWAP OVER		( dsp n dsp )
-				!			( write n on the stack )
-				DSP! EXIT		( restore the parameter stack pointer, immediately exit )
+				DUP DUP DUP
+				R>
+				2-
+				SWAP OVER
+				!
+				DSP! EXIT
 			THEN
-			1 CELLS +
+			2+
 		REPEAT
 
-		( No matching catch - print a message and restart the INTERPRETer. )
 		DROP
 
 		CASE
@@ -660,48 +639,44 @@
 	0 1- THROW
 ;
 
-( Print a stack trace by walking up the return stack. )
 : PRINT-STACK-TRACE
-	RSP@				( start at caller of this function )
+	RSP@		
 	BEGIN
-		DUP R0 1 CELLS - <	( RSP < R0 )
+		DUP R0 2- <
 	WHILE
-		DUP @			( get the return stack entry )
+		DUP @
 		CASE
-		' EXCEPTION-MARKER 1 CELLS + OF	( is it the exception stack frame? )
+		' EXCEPTION-MARKER 2+ OF
 			." CATCH ( DSP="
-			1 CELLS + DUP @ U.		( print saved stack pointer )
+			2+ DUP @ U.
 			." ) "
 		ENDOF
-						( default case )
 			DUP
-			CFA>			( look up the codeword to get the dictionary entry )
-			?DUP IF			( and print it )
-				2DUP			( dea addr dea )
-				ID.			( print word from dictionary entry )
+			CFA>
+			?DUP IF
+				2DUP
+				ID.
 				[ CHAR + ] LITERAL EMIT
-				SWAP >DFA 1 CELLS + - .	( print offset )
+				SWAP >DFA 2+ - .
 			THEN
 		ENDCASE
-		1 CELLS +       		( move up the stack )
+		2+
 	REPEAT
 	DROP
 	CR
 ;
 
 : UNUSED	( -- n )
-	GET-BRK		( get end of data segment according to the kernel )
-	HERE @		( get current position in data segment )
+	GET-BRK
+	HERE @	
 	-
-	CELLS /		( returns number of cells )
+	1 CELLS /
 ;
 
 
 : WELCOME
-        ." zforth VERSION " VERSION . CR
-        UNUSED . ." CELLS REMAINING" CR
-        ." OK "
-	THEN
+        ." ZFORTH" CR
+	UNUSED . ." CELLS REMAINING" CR CR
 ;
 
 WELCOME

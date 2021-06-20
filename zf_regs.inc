@@ -38,6 +38,14 @@ TMP     reg     r5
 TMP.HW  reg     r4
 TMP.D   reg     rr4
 TMP2    reg     r3
+TMP2.LB reg     rl3
+TMP2.HB reg     rh3
 TMP3    reg     r2
+TMP3.LB reg     rl2
+TMP3.HB reg     rh2
 TMP4    reg     r1
+TMP4.LB reg     rl1
+TMP4.HB reg     rh1
 TMP5    reg     r0
+TMP5.LB reg     rl0
+TMP5.HB reg     rh0

@@ -3,6 +3,10 @@
 
 EXEC            macro
         pop     X, @W
+  if DEBUG_EXEC
+        ld      TMP, exec_trace_handler
+        call    @TMP
+  endif
         jp      @X
         endm
 
@@ -83,6 +87,12 @@ FORTHLIT        macro   n
         endm
 
 
+FORTH2LIT       macro   n
+        FORTH   TWOLIT
+        dd      n
+        endm
+
+
 FORTHLITF       macro   n
         FORTH   LIT
         FORTH   n
@@ -111,6 +121,7 @@ FORTH0BRANCH    macro   dest
 
 TOFLAG          macro   arg1, cmpop, arg2=#0
         cp      arg1, arg2
+        clr     TOS
         tcc     cmpop, TOS
         neg     TOS
         endm
