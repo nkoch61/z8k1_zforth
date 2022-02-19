@@ -7,5 +7,6 @@ p=env.Asm('zforth')
 z=env.Hex('zforth')
 
 env.Depends(p, Glob('*.inc'))
+env.Depends(p, Glob('*.f'))
 env.Clean(z, [Glob ('*~'), Glob ('*.lst')])
 env.Default(z)

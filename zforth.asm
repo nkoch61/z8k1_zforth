@@ -1478,7 +1478,7 @@ WORD    :=      TMP3
         FORTHLIT        5F00h   ; call
         FORTH           COMMA
         FORTHLIT        dodoes
-        FORTH           COMMA   ; call/jp dodoes
+        FORTH           COMMA   ; call dodoes
 	FORTH           EXIT
 
 ; **************************************
